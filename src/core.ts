@@ -48,8 +48,22 @@ export async function waitForXPath(page: Page, xpath: string, timeout: number) {
   );
 }
 
+
+async function sleep(ms:number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+let pagesProcessed = 0; // Counter for processed pages
 export async function crawl(config: Config) {
   configSchema.parse(config);
+
+  async function writeAfterBatch() {
+    pagesProcessed++;
+    if (pagesProcessed % 50 === 0) {
+      console.log(`Processed ${pagesProcessed} pages`);
+      await write(config);
+    }
+  }
 
   if (process.env.NO_CRAWL !== "true") {
     // PlaywrightCrawler crawls the web using a headless
@@ -59,9 +73,11 @@ export async function crawl(config: Config) {
       async requestHandler({ request, page, enqueueLinks, log, pushData }) {
         const title = await page.title();
         pageCounter++;
+
         log.info(
           `Crawling: Page ${pageCounter} / ${config.maxPagesToCrawl} - URL: ${request.loadedUrl}...`,
         );
+        await sleep(5000);
 
         // Use custom handling for XPath selector
         if (config.selector) {
@@ -93,6 +109,9 @@ export async function crawl(config: Config) {
           globs:
             typeof config.match === "string" ? [config.match] : config.match,
         });
+
+        // Check if it's time to write after every batches of pages processed
+        await writeAfterBatch();
       },
       // Comment this option to scrape the full website.
       maxRequestsPerCrawl: config.maxPagesToCrawl,
